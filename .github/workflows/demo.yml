@@ -51,6 +51,20 @@ jobs:
           curl -sSL -o models/demo_input "$VIDEO_URL"
           echo "ONNX_MODEL=$(ls models/*.onnx | head -1)" >> "$GITHUB_ENV"
 
+      - name: Parity with Ultralytics
+        # Same ONNX file on both sides: any difference comes from takt's preprocessing, decoding,
+        # NMS or box scaling. Portrait (bus) and landscape (zidane) exercise both padding axes.
+        run: |
+          mkdir -p results
+          curl -sSL -o models/zidane.jpg https://ultralytics.com/images/zidane.jpg
+          status=0
+          for name in bus zidane; do
+            python scripts/parity_reference.py --model "$ONNX_MODEL" --image models/$name.jpg               --json results/parity_ref_$name.json
+            ./build/release/apps/takt_run --model "$ONNX_MODEL" --source models/$name.jpg               --policy block --no-track --stats-ms 0 --jsonl results/parity_takt_$name.jsonl > /dev/null
+            python scripts/check_parity.py results/parity_ref_$name.json results/parity_takt_$name.jsonl               --tol-px 1.0 --tol-score 0.01 --report results/parity_$name.json || status=1
+          done
+          exit $status
+
       - name: Machine info
         run: |
           lscpu | grep -E 'Model name|^CPU\(s\)|Thread' | tee results-machine.txt

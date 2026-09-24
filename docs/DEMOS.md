@@ -28,8 +28,8 @@ conveyor fits the industrial-inspection story and avoids licensing questions. Th
 ./build/release/apps/takt_run --model models/yolo11n.onnx --source 0 --show
 ```
 
-Press `q` or Esc to stop; the run report prints on exit. On a Raspberry Pi 5 with a USB camera
-this is the most convincing demo there is: it runs, on the edge, right now.
+Press `q` or Esc to stop; the run report prints on exit. On a laptop webcam this is the most
+convincing interview demo there is: it runs, live, right now.
 
 ## 3. The overload experiment (no model needed)
 

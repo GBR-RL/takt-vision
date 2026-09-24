@@ -5,7 +5,7 @@
 #   2. the ONNXRUNTIME_ROOT environment variable
 #   3. download the official prebuilt release for this platform (TAKT_FETCH_ONNXRUNTIME=ON)
 #
-# Prebuilt packages exist for linux-x64, linux-aarch64 (Raspberry Pi 5, Jetson CPU), win-x64 and
+# Prebuilt packages exist for linux-x64, linux-aarch64, win-x64 and
 # osx-arm64. For the CUDA execution provider, point ONNXRUNTIME_ROOT at a *-gpu_cuda12 package.
 
 set(TAKT_ONNXRUNTIME_VERSION "1.30.0" CACHE STRING "ONNX Runtime release to download")

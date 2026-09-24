@@ -11,7 +11,7 @@
 
 namespace takt {
 
-// 64 bytes on every target we care about (x86-64, Cortex-A76, Carmel). Hard-coded rather than
+// 64 bytes on every target we care about (x86-64 and 64-bit ARM). Hard-coded rather than
 // std::hardware_destructive_interference_size, whose value GCC warns may differ between TUs.
 inline constexpr std::size_t kCacheLineSize = 64;
 
@@ -26,7 +26,7 @@ concept QueueElement = std::movable<T> && std::default_initializable<T>;
 // not false-share.
 //
 // Blocking push()/pop() park the thread with C++20 atomic wait/notify on an epoch counter instead
-// of spinning, so an idle pipeline stage costs no CPU - important on a 4-core Raspberry Pi where
+// of spinning, so an idle pipeline stage costs no CPU - important on machines with few cores, where
 // every spinning thread steals a core from inference.
 template <QueueElement T>
 class SpscRing {

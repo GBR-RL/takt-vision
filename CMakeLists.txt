@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 project(takt_vision
   VERSION 0.1.0
-  DESCRIPTION "Real-time C++20 vision inference pipeline for edge devices"
+  DESCRIPTION "Real-time C++20 vision inference pipeline"
   HOMEPAGE_URL "https://github.com/GBR-RL/takt-vision"
   LANGUAGES CXX)
 

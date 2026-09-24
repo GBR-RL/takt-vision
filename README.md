@@ -1,7 +1,7 @@
 # takt-vision
 
-**A real-time C++20 vision inference pipeline for edge devices:** camera to detections to tracked
-objects, with bounded latency you can measure.
+**A real-time C++20 vision inference pipeline:** camera to detections to tracked objects, with
+bounded latency you can measure, benchmarked against the equivalent Python pipeline.
 
 [![CI](https://github.com/GBR-RL/takt-vision/actions/workflows/ci.yml/badge.svg)](https://github.com/GBR-RL/takt-vision/actions/workflows/ci.yml)
 [![Demo & benchmarks](https://github.com/GBR-RL/takt-vision/actions/workflows/demo.yml/badge.svg)](https://github.com/GBR-RL/takt-vision/actions/workflows/demo.yml)
@@ -41,7 +41,7 @@ takt-vision sheds stale frames right in front of the bottleneck. Reproduce it wi
 - **Pluggable engines:** a C++20 concept plus type erasure. ONNX Runtime (CPU/CUDA) and a
   deterministic fake backend are included; TensorRT is planned.
 - **Portable:** the core depends only on the standard library. CI builds with GCC and Clang on
-  x86-64 and ARM64 (the Raspberry Pi 5 class), with ASan, UBSan and TSan.
+  x86-64 and ARM64, with ASan, UBSan and TSan.
 
 ## Quick start
 
@@ -67,8 +67,7 @@ OpenCV (`libopencv-dev`) is optional and enables camera/video input and the over
 ## Results
 
 All numbers come from the [Demo & benchmarks](.github/workflows/demo.yml) workflow on a
-GitHub-hosted runner (4 vCPU AMD EPYC 7763, Ubuntu 24.04, ONNX Runtime 1.30 CPU). Edge-device
-numbers follow in [milestone M4](docs/IMPLEMENTATION_PLAN.md).
+GitHub-hosted runner (4 vCPU AMD EPYC 7763, Ubuntu 24.04, ONNX Runtime 1.30 CPU).
 
 **Latency under overload** (camera 30 fps, detector 40 ms ≈ 25 fps, 20 s):
 
@@ -102,9 +101,9 @@ C++), so this is the honest size of the win. A SIMD letterbox is next in the pla
 
 **When does pipelining pay off?** On this 4-vCPU runner, pipelined and sequential throughput are
 equal (17.0 vs 16.9 fps): CPU inference is ~93 % of each frame and competes with the other stages
-for the same cores. Pipelining pays off when inference runs on an accelerator (GPU, NPU, Hailo)
-and the CPU stages become the bottleneck. That is the next measurement, on a Raspberry Pi 5 and a
-Jetson ([design notes](docs/DESIGN_NOTES.md#pipelining)).
+for the same cores. Pipelining pays off when inference is offloaded from the CPU (for example
+to a GPU) and the CPU stages become the bottleneck, which is outside this CPU-only benchmark
+([design notes](docs/DESIGN_NOTES.md#pipelining)).
 
 ## How it works
 
@@ -134,8 +133,8 @@ Jetson ([design notes](docs/DESIGN_NOTES.md#pipelining)).
 
 ## Roadmap
 
-Core pipeline, tracking and ONNX Runtime are done. Next: parity test against Ultralytics,
-Raspberry Pi 5 numbers, a SIMD letterbox kernel, a TensorRT backend with FP16/INT8, and a ROS 2
+Core pipeline, tracking, ONNX Runtime and the Ultralytics parity check are done. Next: the C++ vs
+Python comparison across model sizes and end to end on video, a SIMD letterbox kernel, and a ROS 2
 node. See the [implementation plan](docs/IMPLEMENTATION_PLAN.md).
 
 ## License

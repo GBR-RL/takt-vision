@@ -91,7 +91,7 @@ published` and strictly increasing values under concurrency.
 <a id="atomic-wait"></a>
 ## 4. Blocking without spinning: C++20 `atomic::wait`
 
-An idle stage should cost no CPU, particularly on a 4-core Raspberry Pi where a spinning thread
+An idle stage should cost no CPU, particularly on a machine with few cores, where a spinning thread
 steals a core from inference. Blocking push/pop wait on an *epoch* counter:
 
 ```cpp
@@ -211,9 +211,9 @@ then solves exactly. It is verified against brute force on 300 random rectangula
 
 ONNX Runtime's intra-op worker threads spin-wait between runs by default. In a benchmark loop
 that lowers latency. In a pipeline it burns cores that preprocessing, tracking and capture need,
-and on a 4-core edge device that should hurt. takt disables spinning by default
+and on a machine with few cores that should hurt. takt disables spinning by default
 (`OnnxBackendOptions::allow_spinning`). This is a hypothesis until measured: the M4 plan sweeps
-spinning × thread count on the Raspberry Pi 5 and sets the default from the data.
+spinning × thread count on the benchmark machine and sets the default from the data.
 
 <a id="pipelining"></a>
 ## 15. When does pipelining pay off?
@@ -225,10 +225,9 @@ compete for the same four cores.
 
 Pipelined throughput is bounded by the slowest stage, sequential by the sum of stages. The gain
 is therefore at most (sum / max), here 59 / 55 ≈ 1.07×, and CPU contention eats that. Pipelining
-matters when inference leaves the CPU (CUDA, TensorRT, an NPU such as Hailo), because the
+matters when inference leaves the CPU (for example a GPU execution provider), because the
 remaining CPU stages then overlap with it rather than compete. Recording this as a measured null
-result, not a claim, is deliberate; the Raspberry Pi 5 + Hailo and Jetson runs in M4/M5 are where
-the design earns its keep.
+result, not a claim, is deliberate: on a CPU-only machine the honest answer is "little gain".
 
 <a id="parity"></a>
 ## 16. Parity with Ultralytics

@@ -62,24 +62,24 @@ engineering lives. Inference engines plug into it.
 - ⬜ Optimisation: 50 simultaneous objects cost ~1 ms because the gated solver is O(n³) on the
   extended matrix. Split into connected components first (most frames are many small problems).
 
-## M4 - Benchmarks and edge deployment 🔄
+## M4 - Benchmarks: C++ vs Python 🔄
 
 - ✅ Overload experiment (camera faster than detector) and chart, fully reproducible in CI:
   `latest` holds 57 ms p50 / 74 ms p99 with a 40 ms detector; an unbounded FIFO grows past 4 s
 - ✅ C++ vs Python stage comparison on the same model and machine: pre + post 3.5 ms vs 6.1 ms (1.7×)
 - ✅ Pipelined vs sequential on a 4-vCPU CPU-only runner: no gain (17.0 vs 16.9 fps), explained in
-  DESIGN_NOTES §15. Re-measure with inference on an accelerator.
-- ⬜ Raspberry Pi 5 (ARM64, 4 cores): build natively, publish the latency table
-- ⬜ `allow_spinning` on/off and `--threads` sweep: does ORT's spin-waiting steal cores from
-  the pipeline on a 4-core device? (Hypothesis in DESIGN_NOTES; measure, then decide the default.)
-- ⬜ NEON/AVX2 letterbox kernel, measured against the scalar version and `cv::resize`
+  DESIGN_NOTES §15
+- ⬜ C++ vs Python across model sizes (YOLO11n / s / m): how the gap changes as inference grows
+- ⬜ End to end on a video: takt_run vs an equivalent Python loop, throughput and p50/p99 latency
+- ⬜ `allow_spinning` on/off and `--threads` sweep with identical settings on both sides: does ORT's
+  spin-waiting steal cores from the other pipeline stages? (Measure, then decide the default.)
+- ⬜ AVX2/NEON letterbox kernel, measured against the scalar version and `cv::resize`
 
-## M5 - Accelerators ⬜
+## M5 - GPU backend (optional) ⬜
 
 - TensorRT backend (C++ API, `enqueueV3`, pinned staging buffers, CUDA stream) behind the same
-  `InferenceBackend` concept; compile-checked in CI inside NVIDIA's TensorRT container
-- FP32 / FP16 / INT8 table on a Jetson Orin Nano (or a CLAIX GPU node for the desktop numbers)
-- INT8 calibration from a calibration set; accuracy delta reported next to the speed-up
+  `InferenceBackend` concept; compile-checked in CI inside NVIDIA's TensorRT container. Measured
+  only if a GPU is available; not part of the current CPU-only scope.
 
 ## M6 - Integration ⬜
 
@@ -90,7 +90,7 @@ engineering lives. Inference engines plug into it.
 
 ## M7 - Showcase ⬜
 
-- Hero GIF recorded on the Raspberry Pi with a USB camera over a moving part (own footage)
+- Hero GIF from own footage (webcam or phone over a moving part)
 - 60-second screen recording for LinkedIn, a short write-up of the latency findings
 - CV bullet (below) updated with the measured numbers
 
@@ -105,16 +105,15 @@ engineering lives. Inference engines plug into it.
 | C++ vs Python per stage | Where C++ pays off (pre/post-processing), honestly | `takt_bench` + `python_baseline.py` |
 | Green CI with sanitizers on x86-64 and ARM64 | Engineering discipline | badge in README |
 | Zero-allocation test | Memory discipline, provable | `tests/test_zero_alloc.cpp` |
-| Live webcam demo (`--show`) | Interview-ready in 10 seconds | laptop or Raspberry Pi |
+| Live webcam demo (`--show`) | Interview-ready in 10 seconds | laptop webcam |
 
 Details and recording instructions: [DEMOS.md](DEMOS.md).
 
 ## CV bullet (fill in the numbers as milestones land)
 
-> Built **takt-vision**, a multi-threaded C++20 inference pipeline for edge vision (lock-free
+> Built **takt-vision**, a multi-threaded C++20 inference pipeline for real-time vision (lock-free
 > SPSC/triple-buffer hand-offs, zero steady-state heap allocations, ONNX Runtime backend,
 > ByteTrack tracking). Bounded end-to-end latency under overload (57 ms p50 / 74 ms p99 with a
 > 40 ms detector, vs. >4 s for a naive queue) and 1.7× faster pre/post-processing than the
 > equivalent Python pipeline; CI on x86-64 and ARM64 with ASan, UBSan and TSan.
->
-> *(Replace the numbers with Raspberry Pi 5 measurements once M4 lands.)*
+

@@ -88,6 +88,15 @@ jobs:
       - name: Test
         run: ctest --preset ${{ matrix.preset }} --timeout 300
 
+      - name: Zero-allocation test, repeated
+        # Timing-dependent allocations only show up in some interleavings, so run it many times.
+        if: matrix.preset == 'release'
+        run: |
+          for i in $(seq 20); do
+            ./build/release/tests/takt_alloc_test --gtest_brief=1 || { echo "failed on run $i"; exit 1; }
+          done
+          echo "20/20 runs with zero steady-state allocations"
+
       - name: Smoke-run the pipeline
         if: matrix.preset == 'release'
         run: |

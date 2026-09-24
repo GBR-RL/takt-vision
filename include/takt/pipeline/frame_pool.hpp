@@ -52,6 +52,12 @@ class FramePool {
   [[nodiscard]] std::size_t capacity() const noexcept { return storage_.size(); }
   [[nodiscard]] std::size_t available() const;
 
+  // Gives every free frame an image buffer of at least `bytes`. Called once the first camera
+  // frame reveals the resolution: the pool is LIFO, so frames deep in it may stay unused for a
+  // long time, and without this their first use would allocate - a latency spike in the
+  // middle of a run (caught by tests/test_zero_alloc.cpp).
+  void reserve_image_bytes(std::size_t bytes);
+
  private:
   friend struct FrameRecycler;
   void recycle(Frame* frame) noexcept;

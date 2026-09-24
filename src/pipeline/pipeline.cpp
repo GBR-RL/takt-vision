@@ -305,6 +305,7 @@ RunReport Pipeline::run(FrameSource& source) {
         FramePtr frame = pool.acquire(stop);
         if (!frame) break;
         if (!source.read(frame->image)) break;
+        if (sequence == 0) pool.reserve_image_bytes(frame->image.size_bytes());
         frame->captured_at = now();
         frame->sequence = sequence++;
 

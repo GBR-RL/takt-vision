@@ -49,6 +49,21 @@ TEST(FramePool, RecycledFramesAreResetButKeepCapacity) {
   EXPECT_EQ(again->image.width(), 64) << "image buffer is kept for reuse";
 }
 
+TEST(FramePool, ReserveImageBytesPresizesEveryFreeFrame) {
+  FramePool pool(4, {1, 1, 1});
+  auto in_use = pool.try_acquire();
+  pool.reserve_image_bytes(640 * 480 * 3);
+  std::vector<FramePtr> frames;
+  while (auto frame = pool.try_acquire()) frames.push_back(std::move(frame));
+  ASSERT_EQ(frames.size(), 3u);
+  for (const auto& frame : frames) {
+    EXPECT_GE(frame->image.capacity_bytes(), 640u * 480u * 3u);
+    const auto* before = frame->image.data();
+    frame->image.reshape(640, 480, PixelFormat::kBgr8);
+    EXPECT_EQ(frame->image.data(), before) << "reshape within capacity must not reallocate";
+  }
+}
+
 TEST(FramePool, BlockingAcquireWakesWhenAFrameIsReleased) {
   FramePool pool(1, {1, 1, 1});
   auto held = pool.try_acquire();

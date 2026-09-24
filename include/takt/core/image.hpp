@@ -33,6 +33,9 @@ class Image {
   Image(int width, int height, PixelFormat format) { reshape(width, height, format); }
 
   void reshape(int width, int height, PixelFormat format);
+  // Pre-sizes the buffer so a later reshape() up to `bytes` does not allocate.
+  void reserve(std::size_t bytes) { buffer_.reserve(bytes); }
+  [[nodiscard]] std::size_t capacity_bytes() const noexcept { return buffer_.capacity(); }
 
   [[nodiscard]] std::uint8_t* data() noexcept { return buffer_.data(); }
   [[nodiscard]] const std::uint8_t* data() const noexcept { return buffer_.data(); }

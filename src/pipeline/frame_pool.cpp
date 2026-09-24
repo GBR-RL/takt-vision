@@ -50,6 +50,11 @@ std::size_t FramePool::available() const {
   return free_.size();
 }
 
+void FramePool::reserve_image_bytes(std::size_t bytes) {
+  std::scoped_lock lock(mutex_);
+  for (Frame* frame : free_) frame->image.reserve(bytes);
+}
+
 void FramePool::recycle(Frame* frame) noexcept {
   frame->reset();
   {

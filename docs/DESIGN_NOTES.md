@@ -112,6 +112,13 @@ variable. `close()` bumps both epochs and uses `notify_all`.
   size does not allocate.
 - The free list reserves capacity up front, so recycling cannot allocate (or throw).
 
+**A real bug this test caught.** It failed intermittently in CI with exactly 2 allocations.
+The pool is LIFO (the hottest frame is reused first), so during warm-up only some frames were
+ever used; when a scheduling hiccup later drained the pool deeper, two never-used frames
+allocated their image buffers mid-run. In production that is a random latency spike. The fix:
+once the first frame reveals the resolution, `FramePool::reserve_image_bytes` pre-sizes every
+frame.
+
 `tests/test_zero_alloc.cpp` replaces global `operator new`, runs 100 warm-up frames through the
 full threaded pipeline with tracking, then counts allocations across *all* threads for the next
 400 frames: the test asserts **0**. ONNX Runtime's internal allocations are outside this claim

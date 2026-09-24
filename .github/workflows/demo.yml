@@ -1,0 +1,96 @@
+name: Demo & benchmarks
+
+# Produces the artefacts shown in the README: the overload chart, the C++ vs Python stage
+# comparison on a real YOLO11n model, and an annotated demo video. Everything is uploaded as a
+# workflow artefact; nothing is committed automatically.
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: Video to annotate for the demo (any format OpenCV/FFmpeg reads)
+        default: https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/vtest.avi
+      model:
+        description: Ultralytics detection model to export
+        default: yolo11n.pt
+  push:
+    branches: [main]
+    paths: [src/**, include/**, apps/**, scripts/**, .github/workflows/demo.yml]
+
+jobs:
+  demo:
+    runs-on: ubuntu-24.04
+    env:
+      VIDEO_URL: ${{ github.event.inputs.video_url || 'https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/vtest.avi' }}
+      MODEL: ${{ github.event.inputs.model || 'yolo11n.pt' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libopencv-dev ffmpeg
+          python -m pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --quiet ultralytics onnx onnxruntime matplotlib opencv-python-headless
+
+      - name: Build (Release)
+        run: |
+          cmake --preset release -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14 -DTAKT_BUILD_TESTS=OFF
+          cmake --build --preset release
+
+      - name: Export model and fetch inputs
+        run: |
+          python scripts/export_yolo.py --weights "$MODEL" --out models
+          curl -sSL -o models/bus.jpg https://ultralytics.com/images/bus.jpg
+          curl -sSL -o models/demo_input "$VIDEO_URL"
+          echo "ONNX_MODEL=$(ls models/*.onnx | head -1)" >> "$GITHUB_ENV"
+
+      - name: Machine info
+        run: |
+          lscpu | grep -E 'Model name|^CPU\(s\)|Thread' | tee results-machine.txt
+
+      - name: C++ vs Python, stage by stage
+        run: |
+          mkdir -p results docs/assets
+          ./build/release/apps/takt_bench --model "$ONNX_MODEL" --image models/bus.jpg \
+            --iterations 300 --warmup 30 --json results/cpp.json
+          python scripts/python_baseline.py --model "$ONNX_MODEL" --image models/bus.jpg \
+            --iterations 300 --warmup 30 --json results/python.json
+          python scripts/plot_latency.py compare \
+            --run "C++ (takt-vision)=results/cpp.json" --run "Python (NumPy + OpenCV)=results/python.json" \
+            --subtitle "YOLO11n, 640x640, ONNX Runtime CPU, same machine and settings. Median of 300 frames." \
+            --out docs/assets/cpp_vs_python
+
+      - name: Pipelined vs sequential throughput
+        run: |
+          for mode in "" "--sequential"; do
+            ./build/release/apps/takt_run --model "$ONNX_MODEL" --source models/demo_input \
+              --no-realtime --stats-ms 0 $mode --report "results/throughput${mode//-/_}.json"
+          done
+
+      - name: Overload experiment
+        run: |
+          sed -i 's/^python3 /python /' scripts/overload_experiment.sh
+          bash scripts/overload_experiment.sh ./build/release/apps/takt_run 20
+
+      - name: Annotated demo video
+        run: |
+          ./build/release/apps/takt_run --model "$ONNX_MODEL" --source models/demo_input \
+            --policy block --no-realtime --stats-ms 0 --out-video results/demo_raw.mp4             --report results/demo.json
+          ffmpeg -loglevel error -y -i results/demo_raw.mp4 -c:v libx264 -pix_fmt yuv420p -crf 23 results/demo.mp4
+          ffmpeg -loglevel error -y -i results/demo_raw.mp4 \
+            -vf "fps=12,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse" \
+            -t 12 docs/assets/demo.gif
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: takt-vision-demo
+          path: |
+            docs/assets/
+            results/
+            results-machine.txt

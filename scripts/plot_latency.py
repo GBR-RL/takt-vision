@@ -8,6 +8,11 @@
       python scripts/plot_latency.py compare --run "C++ (takt)=results/cpp.json" \\
           --run "Python=results/python.json" --out docs/assets/cpp_vs_python
 
+  models    Per-frame latency by model size, C++ vs Python, stacked by stage; also writes a
+            Markdown results table (JSON pairs <model>_cpp.json / <model>_python.json in --dir)
+      python scripts/plot_latency.py models --dir results/models --models yolo11n yolo11s yolo11m \
+          --out docs/assets/model_sizes --table results/models/table.md
+
 Each command writes <out>-light.png and <out>-dark.png.
 """
 
@@ -23,9 +28,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 # Reference data-viz palette: first three categorical slots, validated per mode.
 THEMES = {
     "light": {"surface": "#fcfcfb", "text": "#0b0b0b", "muted": "#52514e", "grid": "#e4e3df",
-              "series": ["#2a78d6", "#eb6834", "#1baf7a"]},
+              "neutral": "#c9c8c2", "series": ["#2a78d6", "#eb6834", "#1baf7a"]},
     "dark": {"surface": "#1a1a19", "text": "#ffffff", "muted": "#c3c2b7", "grid": "#3a3937",
-             "series": ["#3987e5", "#d95926", "#199e70"]},
+             "neutral": "#57564f", "series": ["#3987e5", "#d95926", "#199e70"]},
 }
 
 
@@ -143,6 +148,84 @@ def compare(args):
         print(f"wrote {path}")
 
 
+def models(args):
+    """Stacked per-frame latency for each model and implementation, plus a Markdown table."""
+    impls = (("C++", "cpp"), ("Python", "python"))
+    data = {}
+    for model in args.models:
+        for impl, suffix in impls:
+            stages = json.loads((Path(args.dir) / f"{model}_{suffix}.json").read_text())["stages"]
+            data[model, impl] = {k: stages[k]["p50_ms"] for k in ("preprocess", "inference", "postprocess", "total")}
+
+    def pretty(model):
+        return model.replace("yolo", "YOLO")
+
+    # Inference is the same engine on both sides, so differences in *total* frame time are dominated by
+    # run-to-run noise for large models. The table reports what is attributable: the stages takt owns.
+    lines = [
+        "| Model | Inference, C++ / Python | Pre + post, C++ | Pre + post, Python | Speed-up (pre + post) "
+        "| Saved per frame |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for model in args.models:
+        c, p = data[model, "C++"], data[model, "Python"]
+        c_own = c["preprocess"] + c["postprocess"]
+        p_own = p["preprocess"] + p["postprocess"]
+        lines.append(
+            f"| {pretty(model)} | {c['inference']:.1f} / {p['inference']:.1f} ms | {c_own:.2f} ms | {p_own:.2f} ms | "
+            f"{p_own / c_own:.1f}x | {p_own - c_own:.2f} ms ({(p_own - c_own) / p['total'] * 100:.1f} % of the frame) |")
+    table = "\n".join(lines) + "\n"
+    if args.table:
+        Path(args.table).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.table).write_text(table)
+    print(table)
+
+    for mode, theme in THEMES.items():
+        fig, ax = new_figure(theme, size=(8, 1.2 + 1.05 * len(args.models)))
+        ax.grid(True, axis="x", color=theme["grid"], linewidth=0.8)
+        ax.grid(False, axis="y")
+        segments = (("preprocess", theme["series"][0], "preprocess"),
+                    ("inference", theme["neutral"], "inference (same engine)"),
+                    ("postprocess", theme["series"][1], "postprocess"))
+        ticks, labels = [], []
+        for i, model in enumerate(args.models):
+            for j, (impl, _) in enumerate(impls):
+                y = i * 2.6 + j
+                d = data[model, impl]
+                left = 0.0
+                for key, color, legend in segments:
+                    ax.barh(y, d[key], left=left, height=0.8, color=color, edgecolor=theme["surface"],
+                            linewidth=1, label=legend if (i, j) == (0, 0) else None)
+                    left += d[key]
+                text = f"{d['total']:.1f} ms"
+                if impl == "C++":
+                    other = data[model, "Python"]
+                    saved = (other["preprocess"] + other["postprocess"]) - (d["preprocess"] + d["postprocess"])
+                    text += f"  ·  {saved:.1f} ms saved outside inference"
+                ax.annotate(text, xy=(left, y), xytext=(5, 0), textcoords="offset points", va="center",
+                            fontsize=8, color=theme["text"], fontweight="bold" if impl == "C++" else "normal")
+                ticks.append(y)
+                labels.append(f"{pretty(model)}  {impl}")
+        ax.set_yticks(ticks, labels)
+        ax.invert_yaxis()
+        ax.set_xlabel("p50 latency per frame (ms): preprocess + inference + postprocess", color=theme["muted"],
+                      fontsize=9)
+        ax.margins(x=0.36)
+        fig.suptitle(args.title, x=0.06, y=0.97, ha="left", fontsize=12, fontweight="bold", color=theme["text"])
+        fig.text(0.06, 0.915, args.subtitle, ha="left", va="top", fontsize=8.5, color=theme["muted"],
+                 linespacing=1.5)
+        legend = ax.legend(frameon=False, fontsize=9, loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3)
+        for text in legend.get_texts():
+            text.set_color(theme["text"])
+        fig.tight_layout(rect=(0, 0, 1, 0.88))
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        path = out.with_name(f"{out.name}-{mode}.png")
+        fig.savefig(path, facecolor=theme["surface"])
+        plt.close(fig)
+        print(f"wrote {path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -156,6 +239,14 @@ def main():
         p.add_argument("--title", default=title)
         p.add_argument("--subtitle", default="")
         p.set_defaults(fn=fn)
+    p = sub.add_parser("models")
+    p.add_argument("--dir", required=True, help="directory with <model>_cpp.json and <model>_python.json")
+    p.add_argument("--models", nargs="+", required=True)
+    p.add_argument("--out", required=True, help="output path without extension")
+    p.add_argument("--table", help="also write the Markdown results table here")
+    p.add_argument("--title", default="Per-frame latency by model size: C++ vs Python")
+    p.add_argument("--subtitle", default="")
+    p.set_defaults(fn=models)
     args = parser.parse_args()
     args.fn(args)
 

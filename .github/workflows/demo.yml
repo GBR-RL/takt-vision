@@ -69,17 +69,25 @@ jobs:
         run: |
           lscpu | grep -E 'Model name|^CPU\(s\)|Thread' | tee results-machine.txt
 
-      - name: C++ vs Python, stage by stage
+      - name: C++ vs Python across model sizes
+        # Same image, same ONNX Runtime settings, 200 timed frames after 20 warm-up frames each.
         run: |
-          mkdir -p results docs/assets
-          ./build/release/apps/takt_bench --model "$ONNX_MODEL" --image models/bus.jpg \
-            --iterations 300 --warmup 30 --json results/cpp.json
-          python scripts/python_baseline.py --model "$ONNX_MODEL" --image models/bus.jpg \
-            --iterations 300 --warmup 30 --json results/python.json
+          mkdir -p results/models docs/assets
+          for m in yolo11n yolo11s yolo11m; do
+            [ -f models/$m.onnx ] || python scripts/export_yolo.py --weights $m.pt --out models > /dev/null
+            ./build/release/apps/takt_bench --model models/$m.onnx --image models/bus.jpg \
+              --iterations 200 --warmup 20 --json results/models/${m}_cpp.json
+            python scripts/python_baseline.py --model models/$m.onnx --image models/bus.jpg \
+              --iterations 200 --warmup 20 --json results/models/${m}_python.json
+          done
+          SUB="bus.jpg (810x1080) at 640x640, ONNX Runtime 1.30 CPU, same machine and settings, median of 200 frames."
           python scripts/plot_latency.py compare \
-            --run "C++ (takt-vision)=results/cpp.json" --run "Python (NumPy + OpenCV)=results/python.json" \
-            --subtitle "YOLO11n 640x640, ONNX Runtime CPU, same machine and settings, median of 300 frames." \
-            --out docs/assets/cpp_vs_python
+            --run "C++ (takt-vision)=results/models/yolo11n_cpp.json" \
+            --run "Python (NumPy + OpenCV)=results/models/yolo11n_python.json" \
+            --subtitle "YOLO11n, $SUB" --out docs/assets/cpp_vs_python
+          python scripts/plot_latency.py models --dir results/models --models yolo11n yolo11s yolo11m \
+            --subtitle "$SUB" --out docs/assets/model_sizes --table results/models/table.md
+          { echo "## C++ vs Python across model sizes"; cat results/models/table.md; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Pipelined vs sequential throughput
         # Offline (unpaced) processing must use a lossless policy; with `latest` the pipeline

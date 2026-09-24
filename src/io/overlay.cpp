@@ -143,9 +143,9 @@ void OverlayRenderer::update_telemetry(const Frame& frame) {
 }
 
 void OverlayRenderer::draw_hud(cv::Mat& canvas, std::size_t visible_objects) const {
-  const double scale = std::max(0.45, canvas.rows / 1400.0);
-  const int line_height = static_cast<int>(std::lround(30 * scale / 0.55));
-  const int panel_width = std::min(canvas.cols, static_cast<int>(std::lround(700 * scale / 0.55)));
+  const double scale = std::max(0.36, canvas.rows / 1500.0);
+  const int line_height = static_cast<int>(std::lround(26 * scale / 0.55));
+  const int panel_width = std::min(canvas.cols, static_cast<int>(std::lround(640 * scale / 0.55)));
   const int bar_height = line_height / 2;
   const int panel_height =
       line_height * (static_cast<int>(hud_lines_.size()) + 1) + bar_height + 16;

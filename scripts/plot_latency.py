@@ -94,26 +94,53 @@ def overload(args):
 
 def compare(args):
     runs = [(label, json.loads(path.read_text())) for label, path in parse_runs(args.run)]
-    stages = ["preprocess", "inference", "postprocess", "total"]
+    # Inference is the same engine on both sides, so it is reported in the subtitle rather than
+    # drawn: at ~55 ms it would flatten the stages the implementations actually differ in.
+    stages = ["preprocess", "postprocess", "pre + post"]
+
+    def p50(data, stage):
+        if stage == "pre + post":
+            return data["stages"]["preprocess"]["p50_ms"] + data["stages"]["postprocess"]["p50_ms"]
+        return data["stages"][stage]["p50_ms"]
+
+    inference = ", ".join(f"{label} {data['stages']['inference']['p50_ms']:.1f} ms" for label, data in runs)
+    subtitle = f"{args.subtitle}\nInference is the same engine in both and not drawn: {inference}.".strip()
 
     for mode, theme in THEMES.items():
-        fig, ax = new_figure(theme, size=(8, 4.2))
+        fig, ax = new_figure(theme, size=(8, 3.8))
         n = len(runs)
         height = 0.8 / n
         for i, ((label, data), color) in enumerate(zip(runs, theme["series"])):
             ys = [s + (i - (n - 1) / 2) * height for s in range(len(stages))]
-            values = [data["stages"][s]["p50_ms"] for s in stages]
+            values = [p50(data, s) for s in stages]
             ax.barh(ys, values, height=height * 0.92, color=color, label=label)
-            for y, v in zip(ys, values):
-                ax.annotate(f"{v:.2f}", xy=(v, y), xytext=(4, 0), textcoords="offset points", va="center",
-                            fontsize=8, color=theme["text"])
+            for stage, y, v in zip(stages, ys, values):
+                text = f"{v:.2f} ms"
+                if n == 2 and i == 0:  # first run is the reference: state its speed-up
+                    text += f"  ·  {p50(runs[1][1], stage) / v:.1f}x faster"
+                ax.annotate(text, xy=(v, y), xytext=(4, 0), textcoords="offset points",
+                            va="center", fontsize=8, color=theme["text"],
+                            fontweight="bold" if n == 2 and i == 0 else "normal")
         ax.set_yticks(range(len(stages)), stages)
         ax.invert_yaxis()
         ax.grid(True, axis="x", color=theme["grid"], linewidth=0.8)
         ax.grid(False, axis="y")
         ax.set_xlabel("p50 latency per frame (ms)", color=theme["muted"], fontsize=9)
-        ax.margins(x=0.12)
-        finish(fig, ax, theme, args.title, args.subtitle, Path(args.out), mode)
+        ax.margins(x=0.30)
+        fig.suptitle(args.title, x=0.06, y=0.97, ha="left", fontsize=12, fontweight="bold", color=theme["text"])
+        fig.text(0.06, 0.915, subtitle, ha="left", va="top", fontsize=8.5, color=theme["muted"],
+                 linespacing=1.5)
+        legend = ax.legend(frameon=False, fontsize=9, loc="lower left", bbox_to_anchor=(0, 1.0),
+                           ncol=len(runs))
+        for text in legend.get_texts():
+            text.set_color(theme["text"])
+        fig.tight_layout(rect=(0, 0, 1, 0.80))
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        path = out.with_name(f"{out.name}-{mode}.png")
+        fig.savefig(path, facecolor=theme["surface"])
+        plt.close(fig)
+        print(f"wrote {path}")
 
 
 def main():
@@ -121,7 +148,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     for name, fn, title in (
         ("overload", overload, "Latency when the detector is slower than the camera"),
-        ("compare", compare, "Where the time goes: C++ vs Python, same ONNX model"),
+        ("compare", compare, "Pre- and post-processing: C++ vs Python, same ONNX model"),
     ):
         p = sub.add_parser(name)
         p.add_argument("--run", action="append", required=True, help="label=path (repeatable)")

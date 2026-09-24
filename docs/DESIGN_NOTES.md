@@ -219,7 +219,8 @@ spinning × thread count on the benchmark machine and sets the default from the 
 ## 15. When does pipelining pay off?
 
 Measured in CI (4 vCPU, YOLO11n on ONNX Runtime CPU, offline video with `--policy block`):
-pipelined **17.0 fps** vs sequential **16.9 fps**, so no gain. Inference is ~55 ms of a ~59 ms
+pipelined **17.0 fps** vs sequential **16.9 fps** on an EPYC 7763, and **21.6 vs 20.6 fps (+5 %)**
+on an EPYC 9V74, so little to no gain. Inference is ~55 ms of a ~59 ms
 frame, and with stages on separate threads it slows slightly (~59 ms) because the other stages
 compete for the same four cores.
 

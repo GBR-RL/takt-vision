@@ -66,44 +66,83 @@ OpenCV (`libopencv-dev`) is optional and enables camera/video input and the over
 
 ## Results
 
-All numbers come from the [Demo & benchmarks](.github/workflows/demo.yml) workflow on a
-GitHub-hosted runner (4 vCPU AMD EPYC 7763, Ubuntu 24.04, ONNX Runtime 1.30 CPU).
+Every number and chart below comes from a single run of the
+[Demo & benchmarks](.github/workflows/demo.yml) workflow on a GitHub-hosted runner: 4 vCPU AMD
+EPYC 9V74, Ubuntu 24.04, ONNX Runtime 1.30 on CPU. GitHub assigns different CPU models to
+different runs, so numbers are only compared within one run. An earlier run on an EPYC 7763
+measured the same effects with slightly different magnitudes.
 
-**Latency under overload** (camera 30 fps, detector 40 ms ≈ 25 fps, 20 s):
+### C++ vs Python
+
+Both sides run the same ONNX model through the same ONNX Runtime engine and settings on the same
+image (`bus.jpg`, 810×1080 → 640×640), 200 timed frames each. The Python baseline is typical
+deployment code: `cv2.resize` + `copyMakeBorder` + NumPy for preprocessing, NumPy decoding and
+`cv2.dnn.NMSBoxesBatched` for postprocessing.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cpp_vs_python-dark.png">
+  <img alt="Median preprocessing and postprocessing time per frame, C++ versus Python, on YOLO11n: preprocessing 2.75 vs 3.83 ms, postprocessing 0.44 vs 1.06 ms" src="docs/assets/cpp_vs_python-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/model_sizes-dark.png">
+  <img alt="Per-frame latency by model size, C++ versus Python, stacked by stage: inference dominates and is identical, the C++ saving in preprocessing and postprocessing stays about 1-2 ms" src="docs/assets/model_sizes-light.png">
+</picture>
+
+| Model | Inference, C++ / Python | Pre + post, C++ | Pre + post, Python | Speed-up (pre + post) | Saved per frame |
+|---|---:|---:|---:|---:|---:|
+| YOLO11n | 44.5 / 44.3 ms | 3.19 ms | 4.89 ms | 1.5× | 1.69 ms (3.4 % of the frame) |
+| YOLO11s | 114.7 / 114.2 ms | 3.19 ms | 4.80 ms | 1.5× | 1.61 ms (1.4 % of the frame) |
+| YOLO11m | 331.8 / 329.1 ms | 3.13 ms | 4.03 ms | 1.3× | 0.91 ms (0.3 % of the frame) |
+
+What this shows:
+
+- **Postprocessing is 2.2-2.5× faster in C++** (0.44 ms vs ~1.0 ms): class-major decoding and
+  allocation-free NMS against NumPy plus OpenCV's NMS.
+- **Preprocessing is 1.1-1.4× faster.** takt's fused letterbox is still scalar code, while
+  `cv2.resize` is SIMD-optimised. The margin is narrower than the 1.7× measured on the older
+  EPYC 7763, where NumPy and OpenCV benefit less from wide vector units. A vectorised letterbox
+  is the next item in the [plan](docs/IMPLEMENTATION_PLAN.md).
+- **Inference is identical** by construction (differences are run-to-run noise, under 1 %). The
+  ~1-2 ms C++ saving is fixed per frame, so it matters most for small, fast models: 3.4 % of a
+  YOLO11n frame, 0.3 % of a YOLO11m frame.
+
+The honest summary: for a single model on a CPU, rewriting the glue in C++ buys a few percent.
+takt-vision's bigger contribution is the runtime around inference: bounded latency under load,
+no allocations, and measured tails.
+
+### Latency under overload
+
+Camera 30 fps, detector 40 ms (≈ 25 fps), 20 s. The chart at the top of this page.
 
 | Ingress policy | End-to-end p50 | p99 | Frames dropped |
 |---|---:|---:|---:|
 | `latest` (default) | **57 ms** | **74 ms** | 101 / 600 |
 | `drop-newest`, depth 4 | 266 ms | 281 ms | 96 / 600 |
-| unbounded FIFO (`block`, depth 256) | 2,081 ms, still growing | 4,096 ms | 0 / 600 |
+| unbounded FIFO (`block`, depth 256) | 2,081 ms, still growing | 4,063 ms | 0 / 600 |
 
 With `latest`, a frame waits on average half an inference period plus one inference: the
 theoretical floor for a single detector.
 
-**Correctness vs. Ultralytics** (same ONNX model, `scripts/check_parity.py`): every detection
-matches one-to-one on a portrait and a landscape test image. Boxes agree within **0.55 px** of
-the 640×640 model input (worst case) and scores within **0.004**. The residual comes from OpenCV's
-8-bit resize versus takt's float resize ([investigation](docs/DESIGN_NOTES.md#parity)).
+### Pipelined vs sequential
 
-**Engineering checks on every push:** 86 tests pass on x86-64 and ARM64. ThreadSanitizer
-reports no races across 80 tests, AddressSanitizer and UBSan are clean, and the steady-state
-pipeline makes **0 heap allocations per frame** across all threads.
+Offline on a 795-frame video with YOLO11n: **21.6 fps pipelined vs 20.6 fps sequential (+5 %)**.
+The gain is small because inference is ~93 % of each frame and competes with the other stages
+for the same four cores. The maximum possible gain is (sum of stages) / (slowest stage), which
+is about 1.07× here ([design notes](docs/DESIGN_NOTES.md#pipelining)).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cpp_vs_python-dark.png">
-  <img alt="Per-stage median latency of the C++ pipeline versus an equivalent Python pipeline on the same YOLO11n ONNX model" src="docs/assets/cpp_vs_python-light.png">
-</picture>
+### Correctness vs Ultralytics
 
-*Same model, same ONNX Runtime settings, same machine. Inference is identical by construction.
-takt-vision is 1.7× faster on the stages it implements: 3.5 ms vs 6.1 ms per frame, most of it the
-fused letterbox. The Python baseline is not naive (its resize and NMS already run in OpenCV's
-C++), so this is the honest size of the win. A SIMD letterbox is next in the plan.*
+Same ONNX model, `scripts/check_parity.py`, run in CI: every detection matches one-to-one on a
+portrait and a landscape test image. Boxes agree within **0.55 px** of the 640×640 model input
+(worst case) and scores within **0.004**. The residual comes from OpenCV's 8-bit resize versus
+takt's float resize ([investigation](docs/DESIGN_NOTES.md#parity)).
 
-**When does pipelining pay off?** On this 4-vCPU runner, pipelined and sequential throughput are
-equal (17.0 vs 16.9 fps): CPU inference is ~93 % of each frame and competes with the other stages
-for the same cores. Pipelining pays off when inference is offloaded from the CPU (for example
-to a GPU) and the CPU stages become the bottleneck, which is outside this CPU-only benchmark
-([design notes](docs/DESIGN_NOTES.md#pipelining)).
+### Engineering checks on every push
+
+86 tests pass on x86-64 and ARM64. ThreadSanitizer reports no races across 80 tests,
+AddressSanitizer and UBSan are clean, and the steady-state pipeline makes **0 heap allocations
+per frame** across all threads, checked 20 times per run.
 
 ## How it works
 

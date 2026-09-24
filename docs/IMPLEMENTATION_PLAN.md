@@ -66,10 +66,12 @@ engineering lives. Inference engines plug into it.
 
 - ✅ Overload experiment (camera faster than detector) and chart, fully reproducible in CI:
   `latest` holds 57 ms p50 / 74 ms p99 with a 40 ms detector; an unbounded FIFO grows past 4 s
-- ✅ C++ vs Python stage comparison on the same model and machine: pre + post 3.5 ms vs 6.1 ms (1.7×)
+- ✅ C++ vs Python stage comparison on the same model and machine: pre + post 1.5× (EPYC 9V74) to
+  1.7× (EPYC 7763) faster
 - ✅ Pipelined vs sequential on a 4-vCPU CPU-only runner: no gain (17.0 vs 16.9 fps), explained in
   DESIGN_NOTES §15
-- ⬜ C++ vs Python across model sizes (YOLO11n / s / m): how the gap changes as inference grows
+- ✅ C++ vs Python across model sizes (YOLO11n / s / m): postprocess 2.2-2.5×, preprocess 1.1-1.4×
+  faster in C++; the fixed ~1-2 ms saving is 3.4 % of a YOLO11n frame and 0.3 % of a YOLO11m frame
 - ⬜ End to end on a video: takt_run vs an equivalent Python loop, throughput and p50/p99 latency
 - ⬜ `allow_spinning` on/off and `--threads` sweep with identical settings on both sides: does ORT's
   spin-waiting steal cores from the other pipeline stages? (Measure, then decide the default.)
@@ -114,6 +116,6 @@ Details and recording instructions: [DEMOS.md](DEMOS.md).
 > Built **takt-vision**, a multi-threaded C++20 inference pipeline for real-time vision (lock-free
 > SPSC/triple-buffer hand-offs, zero steady-state heap allocations, ONNX Runtime backend,
 > ByteTrack tracking). Bounded end-to-end latency under overload (57 ms p50 / 74 ms p99 with a
-> 40 ms detector, vs. >4 s for a naive queue) and 1.7× faster pre/post-processing than the
+> 40 ms detector, vs. >4 s for a naive queue) and 1.5× faster pre/post-processing than the
 > equivalent Python pipeline; CI on x86-64 and ARM64 with ASan, UBSan and TSan.
 

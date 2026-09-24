@@ -1,0 +1,10 @@
+# Python tooling for takt-vision: model export, the Python baseline, charts and test models.
+# Install torch first from the CPU index to avoid pulling CUDA wheels:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r scripts/requirements.txt
+ultralytics>=8.3
+onnx>=1.16
+onnxruntime>=1.20
+opencv-python-headless>=4.9
+numpy>=1.26
+matplotlib>=3.8

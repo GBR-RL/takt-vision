@@ -20,7 +20,8 @@ ask. Each answer points at the code and, where possible, at a test or measuremen
 13. [Shutdown and exceptions across threads](#shutdown)
 14. [ONNX Runtime thread spinning](#spinning)
 15. [When does pipelining pay off?](#pipelining)
-16. [Known limitations](#limitations)
+16. [Parity with Ultralytics](#parity)
+17. [Known limitations](#limitations)
 
 ---
 
@@ -229,8 +230,33 @@ remaining CPU stages then overlap with it rather than compete. Recording this as
 result, not a claim, is deliberate; the Raspberry Pi 5 + Hailo and Jetson runs in M4/M5 are where
 the design earns its keep.
 
+<a id="parity"></a>
+## 16. Parity with Ultralytics
+
+The demo workflow runs Ultralytics' own `predict()` and `takt_run` on the *same ONNX file*, so any
+difference comes from the parts takt reimplements: letterbox, decoding, NMS and box scaling
+(`scripts/parity_reference.py`, `scripts/check_parity.py`). Every detection must have a
+same-class partner, boxes must agree within 1 pixel of the model input, and scores within 0.01.
+
+The first run failed on `zidane.jpg` with a 1.09 px deviation (source pixels) while `bus.jpg`
+passed at 0.21 px. The investigation, reproduced in Python on the same model:
+
+| Input path | bus (scale 0.59) | zidane (scale 0.50) |
+|---|---:|---:|
+| float bilinear (takt) vs 8-bit OpenCV resize (Ultralytics), source px | 0.18 | 1.12 |
+| same, model-input px | 0.10 | 0.56 |
+| float bilinear rounded to 8-bit, source px | 0.30 | 1.11 |
+
+The C++ output matched the float simulation, so the implementation was right. The residual comes
+from OpenCV resizing in 8-bit fixed point (11-bit weights) while takt interpolates in float.
+Inputs differ by at most half a grey level, which moves boxes by about half a model pixel; mapping
+back to a 2x-downscaled source doubles that. Rounding to 8-bit does not close the gap, because
+OpenCV's weights are fixed-point too. Bit-exact parity would mean reimplementing OpenCV's
+arithmetic for no accuracy benefit, so the tolerance is defined in model-input pixels, the
+detector's own resolution, where both images agree to well under one pixel.
+
 <a id="limitations"></a>
-## 16. Known limitations
+## 17. Known limitations
 
 - Batch size 1 and one model per pipeline (by design for per-camera latency).
 - Only float32 raw YOLO heads; end-to-end (NMS-in-graph) exports are rejected with a clear error.

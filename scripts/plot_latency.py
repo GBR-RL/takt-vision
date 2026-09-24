@@ -197,11 +197,11 @@ def models(args):
                     ax.barh(y, d[key], left=left, height=0.8, color=color, edgecolor=theme["surface"],
                             linewidth=1, label=legend if (i, j) == (0, 0) else None)
                     left += d[key]
-                text = f"{d['total']:.1f} ms"
+                text = f"{left:.1f} ms"  # the bar: sum of the stage medians
                 if impl == "C++":
                     other = data[model, "Python"]
                     saved = (other["preprocess"] + other["postprocess"]) - (d["preprocess"] + d["postprocess"])
-                    text += f"  ·  {saved:.1f} ms saved outside inference"
+                    text += f"  ·  saves {saved:.1f} ms"
                 ax.annotate(text, xy=(left, y), xytext=(5, 0), textcoords="offset points", va="center",
                             fontsize=8, color=theme["text"], fontweight="bold" if impl == "C++" else "normal")
                 ticks.append(y)
@@ -210,9 +210,11 @@ def models(args):
         ax.invert_yaxis()
         ax.set_xlabel("p50 latency per frame (ms): preprocess + inference + postprocess", color=theme["muted"],
                       fontsize=9)
-        ax.margins(x=0.36)
+        ax.margins(x=0.25)
         fig.suptitle(args.title, x=0.06, y=0.97, ha="left", fontsize=12, fontweight="bold", color=theme["text"])
-        fig.text(0.06, 0.915, args.subtitle, ha="left", va="top", fontsize=8.5, color=theme["muted"],
+        note = 'Bars: sum of stage medians. "saves": time saved in pre + post. Inference differs only by noise.'
+        subtitle = f"{args.subtitle}\n{note}" if args.subtitle else note
+        fig.text(0.06, 0.915, subtitle, ha="left", va="top", fontsize=8.5, color=theme["muted"],
                  linespacing=1.5)
         legend = ax.legend(frameon=False, fontsize=9, loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3)
         for text in legend.get_texts():

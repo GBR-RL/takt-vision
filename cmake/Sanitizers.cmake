@@ -1,0 +1,16 @@
+# Applies sanitizers globally (including GoogleTest), which ThreadSanitizer requires to avoid
+# false positives from uninstrumented code.
+if(TAKT_SANITIZER)
+  if(MSVC)
+    if(TAKT_SANITIZER STREQUAL "address")
+      add_compile_options(/fsanitize=address)
+    else()
+      message(FATAL_ERROR "takt: MSVC supports only TAKT_SANITIZER=address")
+    endif()
+  else()
+    list(JOIN TAKT_SANITIZER "," _takt_sanitizers)
+    add_compile_options(-fsanitize=${_takt_sanitizers} -fno-omit-frame-pointer -fno-sanitize-recover=all)
+    add_link_options(-fsanitize=${_takt_sanitizers})
+    message(STATUS "takt: sanitizers enabled: ${_takt_sanitizers}")
+  endif()
+endif()

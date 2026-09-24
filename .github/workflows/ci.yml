@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: |
+          pipx run clang-format==23.1.1 --dry-run --Werror \
+            $(git ls-files '*.cpp' '*.hpp')
+
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GCC 14 Release, x86-64 (ONNX Runtime + OpenCV)
+            os: ubuntu-24.04
+            cc: gcc-14
+            cxx: g++-14
+            preset: release
+            apt: libopencv-dev
+            extra: -DTAKT_BUILD_BENCHMARKS=ON
+          - name: GCC Release, ARM64 (ONNX Runtime + OpenCV)
+            os: ubuntu-24.04-arm
+            cc: gcc
+            cxx: g++
+            preset: release
+            apt: libopencv-dev
+            extra: ""
+          - name: Clang 18 AddressSanitizer + UBSan
+            os: ubuntu-24.04
+            cc: clang-18
+            cxx: clang++-18
+            preset: asan
+            apt: ""
+            extra: ""
+          - name: Clang 18 ThreadSanitizer
+            os: ubuntu-24.04
+            cc: clang-18
+            cxx: clang++-18
+            preset: tsan
+            apt: ""
+            extra: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build ${{ matrix.apt }}
+          python -m pip install --quiet onnx numpy
+
+      - name: Allow sanitizer runtimes to map memory
+        if: matrix.preset == 'asan' || matrix.preset == 'tsan'
+        # Ubuntu 24.04 kernels use 32 bits of mmap ASLR entropy, which older sanitizer runtimes
+        # cannot handle ("unexpected memory mapping").
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      - name: Configure
+        run: >
+          cmake --preset ${{ matrix.preset }}
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          ${{ matrix.extra }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --timeout 300
+
+      - name: Smoke-run the pipeline
+        if: matrix.preset == 'release'
+        run: |
+          ./build/release/apps/takt_run --backend fake --fake-latency-ms 10 --max-frames 120 \
+            --stats-ms 0 --report smoke.json
+          ./build/release/apps/takt_run --backend fake --fake-latency-ms 10 --max-frames 120 \
+            --stats-ms 0 --sequential
+
+      - name: Micro-benchmarks
+        if: contains(matrix.extra, 'BENCHMARKS')
+        run: ./build/release/bench/takt_microbench --benchmark_min_time=0.2s

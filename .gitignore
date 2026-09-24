@@ -1,0 +1,25 @@
+# Build trees
+build/
+out/
+cmake-build-*/
+compile_commands.json
+
+# Models, weights and generated data (weights are AGPL-licensed and downloaded on demand)
+models/
+*.onnx
+*.engine
+*.pt
+results/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDEs / OS
+.vscode/
+.idea/
+.vs/
+*.swp
+.DS_Store
+Thumbs.db

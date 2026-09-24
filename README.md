@@ -81,6 +81,11 @@ numbers follow in [milestone M4](docs/IMPLEMENTATION_PLAN.md).
 With `latest`, a frame waits on average half an inference period plus one inference: the
 theoretical floor for a single detector.
 
+**Correctness vs. Ultralytics** (same ONNX model, `scripts/check_parity.py`): every detection
+matches one-to-one on a portrait and a landscape test image. Boxes agree within **0.55 px** of
+the 640×640 model input (worst case) and scores within **0.004**. The residual comes from OpenCV's
+8-bit resize versus takt's float resize ([investigation](docs/DESIGN_NOTES.md#parity)).
+
 **Engineering checks on every push:** 86 tests pass on x86-64 and ARM64. ThreadSanitizer
 reports no races across 80 tests, AddressSanitizer and UBSan are clean, and the steady-state
 pipeline makes **0 heap allocations per frame** across all threads.

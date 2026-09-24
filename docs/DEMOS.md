@@ -64,7 +64,18 @@ stages. That precision is itself a signal to a technical reviewer.
 With stages on separate threads, throughput approaches 1 / (slowest stage) instead of
 1 / (sum of stages).
 
-## 6. The engineering evidence
+## 6. Parity with Ultralytics
+
+```bash
+python scripts/parity_reference.py --model models/yolo11n.onnx --image bus.jpg --json ref.json
+./build/release/apps/takt_run --model models/yolo11n.onnx --source bus.jpg --policy block --no-track --jsonl takt.jsonl
+python scripts/check_parity.py ref.json takt.jsonl
+```
+
+"How do you know your C++ reimplementation is correct?" is the first question a sceptical
+reviewer asks. This is the answer, and it runs in CI.
+
+## 7. The engineering evidence
 
 - CI badge: GCC and Clang, x86-64 and ARM64, ASan + UBSan + TSan, on every push.
 - `tests/test_zero_alloc.cpp`: zero heap allocations per frame in steady state, asserted.

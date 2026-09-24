@@ -34,13 +34,15 @@ engineering lives. Inference engines plug into it.
   Google Benchmark
 - CI matrix: GCC 14 x86-64, GCC ARM64, Clang 18 ASan+UBSan, Clang 18 TSan, clang-format check
 
-## M1 - Correct single-frame inference ✅ (parity test 🔄)
+## M1 - Correct single-frame inference ✅
 
 - Fused letterbox preprocessing (resize + pad + BGR→RGB + normalise + HWC→CHW in one pass)
 - ONNX Runtime backend bound to caller-owned buffers (no per-frame tensor allocation)
 - YOLOv8 / YOLO11 head decoder (class-major scan) and torchvision-equivalent NMS
 - `takt_bench`: per-stage p50/p95/p99 on one thread
-- 🔄 **Parity test:** C++ detections on `bus.jpg` match Ultralytics within 1 px / 0.01 score
+- ✅ **Parity with Ultralytics** on the same ONNX model, checked in CI on a portrait and a
+  landscape image: all detections match; worst box deviation 0.55 model px, worst score deviation
+  0.004 (tolerance 1 model px / 0.01). See DESIGN_NOTES §16 for why the tolerance is in model px.
 
 ## M2 - Real-time pipeline ✅
 

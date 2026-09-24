@@ -3,10 +3,18 @@
     python scripts/check_parity.py ref.json takt.jsonl --tol-px 1.0 --tol-score 0.01 --report parity.json
 
 Detections are matched one-to-one (same class, greedy by IoU, IoU > 0.5). The check passes when
-every detection has a partner, box corners agree within --tol-px pixels and scores within
---tol-score. A detection without a partner is tolerated only if its score is within --tol-score of
-the confidence threshold: such boxes can legitimately flip either way on float differences, and
-they are reported as borderline. Exit status is non-zero on failure.
+every detection has a partner, box corners agree within --tol-px pixels *of the model input*
+(the detector's own resolution) and scores within --tol-score.
+
+Why model pixels: Ultralytics resizes with OpenCV's 8-bit fixed-point arithmetic, takt resizes in
+float. Inputs differ by at most half a grey level, which moves boxes by a fraction of a model
+pixel - and mapping back to the source multiplies that by 1/scale (2x for a 1280x720 image at
+640). A source-pixel tolerance would therefore mean something different for every image size.
+Source-pixel deviations are still reported.
+
+A detection without a partner is tolerated only if its score is within --tol-score of the
+confidence threshold: such boxes can legitimately flip either way on float differences, and they
+are reported as borderline. Exit status is non-zero on failure.
 """
 
 import argparse
@@ -27,7 +35,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("reference", help="JSON from parity_reference.py")
     parser.add_argument("takt", help="JSON lines from takt_run --jsonl (last frame is used)")
-    parser.add_argument("--tol-px", type=float, default=1.0)
+    parser.add_argument("--tol-px", type=float, default=1.0, help="tolerance in model-input pixels")
     parser.add_argument("--tol-score", type=float, default=0.01)
     parser.add_argument("--report", help="write a JSON summary here")
     args = parser.parse_args()
@@ -37,6 +45,9 @@ def main() -> int:
     lines = [line for line in Path(args.takt).read_text().splitlines() if line.strip()]
     ours = json.loads(lines[-1])["detections"]
     conf = ref_doc.get("conf", 0.25)
+    imgsz = ref_doc.get("imgsz", 640)
+    height, width = ref_doc.get("orig_shape", [imgsz, imgsz])
+    scale = min(imgsz / height, imgsz / width)  # letterbox scale: source px -> model px
 
     unmatched = list(range(len(ours)))
     pairs, missing = [], []
@@ -57,7 +68,8 @@ def main() -> int:
     def borderline(d):
         return d["score"] - conf <= args.tol_score
 
-    max_px = max((abs(a - b) for r, o, _ in pairs for a, b in zip(r["box"], o["box"])), default=0.0)
+    max_src_px = max((abs(a - b) for r, o, _ in pairs for a, b in zip(r["box"], o["box"])), default=0.0)
+    max_px = max_src_px * scale
     max_score = max((abs(r["score"] - o["score"]) for r, o, _ in pairs), default=0.0)
     min_iou = min((v for *_, v in pairs), default=1.0)
     hard_missing = [d for d in missing if not borderline(d)]
@@ -67,8 +79,9 @@ def main() -> int:
     name = Path(ref_doc.get("image", args.reference)).name
     print(f"parity {name}: reference {len(ref)}, takt {len(ours)}, matched {len(pairs)}, "
           f"borderline {len(missing) + len(extra) - len(hard_missing) - len(hard_extra)}")
-    print(f"  max box deviation {max_px:.3f} px (tol {args.tol_px}), max score deviation {max_score:.4f} "
-          f"(tol {args.tol_score}), min IoU {min_iou:.4f}")
+    print(f"  max box deviation {max_px:.3f} model px (tol {args.tol_px}) = {max_src_px:.3f} source px "
+          f"at scale {scale:.3f}; max score deviation {max_score:.4f} (tol {args.tol_score}); "
+          f"min IoU {min_iou:.4f}")
     for d in hard_missing:
         print(f"  MISSING in takt: cls {d['cls']} score {d['score']:.3f} box {d['box']}")
     for d in hard_extra:
@@ -78,7 +91,8 @@ def main() -> int:
     if args.report:
         Path(args.report).write_text(json.dumps({
             "image": name, "passed": passed, "reference": len(ref), "takt": len(ours), "matched": len(pairs),
-            "max_box_deviation_px": max_px, "max_score_deviation": max_score, "min_iou": min_iou,
+            "max_box_deviation_model_px": max_px, "max_box_deviation_source_px": max_src_px,
+            "scale": scale, "max_score_deviation": max_score, "min_iou": min_iou,
             "missing": hard_missing, "extra": hard_extra, "tol_px": args.tol_px, "tol_score": args.tol_score,
         }, indent=1) + "\n")
     return 0 if passed else 1

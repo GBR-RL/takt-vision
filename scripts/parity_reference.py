@@ -32,7 +32,7 @@ def main() -> None:
         for b, s, c in zip(boxes.xyxy.tolist(), boxes.conf.tolist(), boxes.cls.tolist())
     ]
     out = {"implementation": "ultralytics", "model": args.model, "image": args.image, "conf": args.conf,
-           "iou": args.iou, "detections": detections}
+           "iou": args.iou, "imgsz": args.imgsz, "orig_shape": list(result.orig_shape), "detections": detections}
     Path(args.json).parent.mkdir(parents=True, exist_ok=True)
     Path(args.json).write_text(json.dumps(out, indent=1) + "\n")
     print(f"ultralytics: {len(detections)} detections on {args.image}")

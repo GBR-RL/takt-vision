@@ -64,15 +64,17 @@ jobs:
             --iterations 300 --warmup 30 --json results/python.json
           python scripts/plot_latency.py compare \
             --run "C++ (takt-vision)=results/cpp.json" --run "Python (NumPy + OpenCV)=results/python.json" \
-            --subtitle "YOLO11n, 640x640, ONNX Runtime CPU, same machine and settings. Median of 300 frames." \
+            --subtitle "YOLO11n 640x640, ONNX Runtime CPU, same machine and settings, median of 300 frames." \
             --out docs/assets/cpp_vs_python
 
       - name: Pipelined vs sequential throughput
+        # Offline (unpaced) processing must use a lossless policy; with `latest` the pipeline
+        # would rightly drop every frame it cannot keep up with.
         run: |
-          for mode in "" "--sequential"; do
-            ./build/release/apps/takt_run --model "$ONNX_MODEL" --source models/demo_input \
-              --no-realtime --stats-ms 0 $mode --report "results/throughput${mode//-/_}.json"
-          done
+          ./build/release/apps/takt_run --model "$ONNX_MODEL" --source models/demo_input \
+            --no-realtime --policy block --stats-ms 0 --report results/throughput_pipelined.json
+          ./build/release/apps/takt_run --model "$ONNX_MODEL" --source models/demo_input \
+            --no-realtime --sequential --stats-ms 0 --report results/throughput_sequential.json
 
       - name: Overload experiment
         run: |
@@ -85,8 +87,8 @@ jobs:
             --policy block --no-realtime --stats-ms 0 --out-video results/demo_raw.mp4             --report results/demo.json
           ffmpeg -loglevel error -y -i results/demo_raw.mp4 -c:v libx264 -pix_fmt yuv420p -crf 23 results/demo.mp4
           ffmpeg -loglevel error -y -i results/demo_raw.mp4 \
-            -vf "fps=12,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse" \
-            -t 12 docs/assets/demo.gif
+            -vf "fps=10,scale=640:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse" \
+            -t 10 results/demo.gif
 
       - uses: actions/upload-artifact@v4
         with:

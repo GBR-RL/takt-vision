@@ -121,6 +121,11 @@ int run(const Options& o) {
                            source->describe(), pipeline.model_width(), pipeline.model_height(),
                            app::build_features());
 
+  if (!o.source.realtime && !o.sequential && o.policy == "latest") {
+    std::cerr << "[takt] note: --no-realtime with --policy latest drops every frame the pipeline "
+                 "cannot keep up with; use --policy block for offline processing\n";
+  }
+
   std::signal(SIGINT, on_signal);
   std::signal(SIGTERM, on_signal);
   // Signal handlers may only touch lock-free atomics; a watcher thread turns the flag into a

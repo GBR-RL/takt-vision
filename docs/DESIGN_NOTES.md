@@ -19,7 +19,8 @@ ask. Each answer points at the code and, where possible, at a test or measuremen
 12. [The assignment gating detail](#assignment)
 13. [Shutdown and exceptions across threads](#shutdown)
 14. [ONNX Runtime thread spinning](#spinning)
-15. [Known limitations](#limitations)
+15. [When does pipelining pay off?](#pipelining)
+16. [Known limitations](#limitations)
 
 ---
 
@@ -34,14 +35,15 @@ then sat blocked holding it until inference was free, while another frame sat in
 
 Two fixes, each measured (`takt_run --backend fake --fake-latency-ms 40 --policy latest`):
 
-| Change | p50 end-to-end |
+| Change | p50 end-to-end (dev laptop) |
 |---|---:|
 | Depth-2 internal queues, drop only at camera | 231 ms |
 | Depth-1 internal queues | 188 ms |
 | **Latest-mailbox at every hand-off (current)** | **124 ms** |
 
-*(Measured on a Windows development laptop, whose ~1-15 ms timer granularity inflates all of
-these; Linux CI numbers are in the README.)*
+*(The development laptop is Windows with a libc++ build whose `atomic::wait` falls back to
+sleep-polling, which inflates all three. On Linux in CI the current design measures **57 ms p50 /
+74 ms p99** for the same 40 ms detector, close to the theoretical 1.5 inference periods.)*
 
 Rule learned: **shed load immediately in front of the bottleneck, not just at the entrance.**
 The `block` and `drop-newest` policies keep blocking FIFOs internally, because their promise is
@@ -205,8 +207,23 @@ and on a 4-core edge device that should hurt. takt disables spinning by default
 (`OnnxBackendOptions::allow_spinning`). This is a hypothesis until measured: the M4 plan sweeps
 spinning × thread count on the Raspberry Pi 5 and sets the default from the data.
 
+<a id="pipelining"></a>
+## 15. When does pipelining pay off?
+
+Measured in CI (4 vCPU, YOLO11n on ONNX Runtime CPU, offline video with `--policy block`):
+pipelined **17.0 fps** vs sequential **16.9 fps**, so no gain. Inference is ~55 ms of a ~59 ms
+frame, and with stages on separate threads it slows slightly (~59 ms) because the other stages
+compete for the same four cores.
+
+Pipelined throughput is bounded by the slowest stage, sequential by the sum of stages. The gain
+is therefore at most (sum / max), here 59 / 55 ≈ 1.07×, and CPU contention eats that. Pipelining
+matters when inference leaves the CPU (CUDA, TensorRT, an NPU such as Hailo), because the
+remaining CPU stages then overlap with it rather than compete. Recording this as a measured null
+result, not a claim, is deliberate; the Raspberry Pi 5 + Hailo and Jetson runs in M4/M5 are where
+the design earns its keep.
+
 <a id="limitations"></a>
-## 15. Known limitations
+## 16. Known limitations
 
 - Batch size 1 and one model per pipeline (by design for per-camera latency).
 - Only float32 raw YOLO heads; end-to-end (NMS-in-graph) exports are rejected with a clear error.

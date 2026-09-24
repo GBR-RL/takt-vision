@@ -64,28 +64,42 @@ python scripts/export_yolo.py --weights yolo11n.pt --out models
 Requirements: CMake ≥ 3.25, a C++20 compiler (GCC ≥ 13, Clang ≥ 17, MSVC 19.38+), Ninja.
 OpenCV (`libopencv-dev`) is optional and enables camera/video input and the overlay.
 
-```text
-$ takt_run --model models/yolo11n.onnx --source video.mp4 --report report.json
-takt-vision run (pipelined, onnxruntime-cpu, policy=latest)
-  frames     : ... captured, ... completed, ... dropped
-  latency(ms)       mean       p50       p95       p99       max
-  preprocess        ...
-  inference         ...
-  end-to-end        ...
-```
-
 ## Results
 
-Measured in CI on GitHub-hosted runners by the [Demo & benchmarks](.github/workflows/demo.yml)
-workflow; edge-device numbers follow in [milestone M4](docs/IMPLEMENTATION_PLAN.md).
+All numbers come from the [Demo & benchmarks](.github/workflows/demo.yml) workflow on a
+GitHub-hosted runner (4 vCPU AMD EPYC 7763, Ubuntu 24.04, ONNX Runtime 1.30 CPU). Edge-device
+numbers follow in [milestone M4](docs/IMPLEMENTATION_PLAN.md).
+
+**Latency under overload** (camera 30 fps, detector 40 ms ≈ 25 fps, 20 s):
+
+| Ingress policy | End-to-end p50 | p99 | Frames dropped |
+|---|---:|---:|---:|
+| `latest` (default) | **57 ms** | **74 ms** | 101 / 600 |
+| `drop-newest`, depth 4 | 266 ms | 281 ms | 96 / 600 |
+| unbounded FIFO (`block`, depth 256) | 2,081 ms, still growing | 4,096 ms | 0 / 600 |
+
+With `latest`, a frame waits on average half an inference period plus one inference: the
+theoretical floor for a single detector.
+
+**Engineering checks on every push:** 86 tests pass on x86-64 and ARM64. ThreadSanitizer
+reports no races across 80 tests, AddressSanitizer and UBSan are clean, and the steady-state
+pipeline makes **0 heap allocations per frame** across all threads.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/cpp_vs_python-dark.png">
   <img alt="Per-stage median latency of the C++ pipeline versus an equivalent Python pipeline on the same YOLO11n ONNX model" src="docs/assets/cpp_vs_python-light.png">
 </picture>
 
-*Same model, same ONNX Runtime settings, same machine. Inference time is equal by construction;
-the difference is preprocessing, decoding and NMS.*
+*Same model, same ONNX Runtime settings, same machine. Inference is identical by construction.
+takt-vision is 1.7× faster on the stages it implements: 3.5 ms vs 6.1 ms per frame, most of it the
+fused letterbox. The Python baseline is not naive (its resize and NMS already run in OpenCV's
+C++), so this is the honest size of the win. A SIMD letterbox is next in the plan.*
+
+**When does pipelining pay off?** On this 4-vCPU runner, pipelined and sequential throughput are
+equal (17.0 vs 16.9 fps): CPU inference is ~93 % of each frame and competes with the other stages
+for the same cores. Pipelining pays off when inference runs on an accelerator (GPU, NPU, Hailo)
+and the CPU stages become the bottleneck. That is the next measurement, on a Raspberry Pi 5 and a
+Jetson ([design notes](docs/DESIGN_NOTES.md#pipelining)).
 
 ## How it works
 

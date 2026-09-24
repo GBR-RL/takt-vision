@@ -57,12 +57,13 @@ stages. That precision is itself a signal to a technical reviewer.
 ## 5. Pipelined vs sequential throughput
 
 ```bash
-./build/release/apps/takt_run --model models/yolo11n.onnx --source input.mp4 --no-realtime
+./build/release/apps/takt_run --model models/yolo11n.onnx --source input.mp4 --no-realtime --policy block
 ./build/release/apps/takt_run --model models/yolo11n.onnx --source input.mp4 --no-realtime --sequential
 ```
 
-With stages on separate threads, throughput approaches 1 / (slowest stage) instead of
-1 / (sum of stages).
+Offline comparisons need the lossless `block` policy. With stages on separate threads, throughput
+approaches 1 / (slowest stage) instead of 1 / (sum of stages). On a CPU-only machine where
+inference dominates, expect little gain; see DESIGN_NOTES §15.
 
 ## 6. Parity with Ultralytics
 

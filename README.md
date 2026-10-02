@@ -101,7 +101,8 @@ What this shows:
   allocation-free NMS against NumPy plus OpenCV's NMS.
 - **Preprocessing is 1.1-1.4× faster.** takt's fused letterbox is still scalar code, while
   `cv2.resize` is SIMD-optimised. The margin is narrower than the 1.7× measured on the older
-  EPYC 7763, where NumPy and OpenCV benefit less from wide vector units. A vectorised letterbox kernel would narrow the gap.
+  EPYC 7763, where NumPy and OpenCV benefit less from wide vector units. A vectorised letterbox
+  kernel would narrow the gap.
 - **Inference is identical** by construction (differences are run-to-run noise, under 1 %). The
   ~1-2 ms C++ saving is fixed per frame, so it matters most for small, fast models: 3.4 % of a
   YOLO11n frame, 0.3 % of a YOLO11m frame.
@@ -155,6 +156,7 @@ per frame** across all threads, checked 20 times per run.
 - [Architecture](docs/ARCHITECTURE.md): components, threads, frame lifecycle, shutdown and failure
 - [Design notes](docs/DESIGN_NOTES.md): the decisions behind the code and the measurements
   backing them
+- [Reproducing the results](docs/REPRODUCE.md): the command behind every chart and video
 
 ## Repository layout
 

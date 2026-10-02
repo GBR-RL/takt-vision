@@ -1,6 +1,7 @@
 # Design notes
 
-The decisions behind the code, as questions and answers. Each answer points at the code and, where possible, at a test or measurement that backs it.
+The decisions behind the code, as questions and answers. Each answer points at the code and,
+where possible, at a test or measurement that backs it.
 
 ## Contents
 
@@ -211,8 +212,8 @@ then solves exactly. It is verified against brute force on 300 random rectangula
 ONNX Runtime's intra-op worker threads spin-wait between runs by default. In a benchmark loop
 that lowers latency. In a pipeline it burns cores that preprocessing, tracking and capture need,
 and on a machine with few cores that should hurt. takt disables spinning by default
-(`OnnxBackendOptions::allow_spinning`). Whether that pays off depends on the machine; a sweep of spinning × thread count would
-settle the default.
+(`OnnxBackendOptions::allow_spinning`). Whether that pays off depends on the machine; a sweep of
+spinning × thread count would settle the default.
 
 <a id="pipelining"></a>
 ## 15. When does pipelining pay off?

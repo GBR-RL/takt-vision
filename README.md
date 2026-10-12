@@ -13,7 +13,10 @@ bounded latency you can measure, benchmarked against the equivalent Python pipel
 within it every time, not just on average. takt-vision is the runtime between the camera and the
 decision: preprocessing, inference (ONNX Runtime today, TensorRT next), decoding, NMS and
 multi-object tracking. Each stage runs on its own thread, connected by lock-free hand-offs, with
-no heap allocation per frame and p99 latency reported for every stage.
+no heap allocation per frame and p99 latency reported for every stage. The same pipeline runs on
+NVIDIA GPUs (`--ep cuda`, with a GPU build of ONNX Runtime) and on CPUs, on x86-64 and ARM64; the
+results below were measured on CPU runners, where the cost of the glue around the model is
+easiest to see.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/overload-dark.png">
